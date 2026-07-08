@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="MC">
+    <meta name="description" content="交互式Excel折线图表编辑器 - Created by MC">
+    <title>交互式Excel折线图表编辑器 - Created by MC</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.2.3/dist/chartjs-plugin-dragdata.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+            padding: 10px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            background-color: white;
+            border-radius: 0;
+            box-shadow: none;
+            overflow: hidden;
+            height: 100%;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
+            color: white;
+            padding: 15px 30px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+        
+        .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        /* Left Sidebar: Upload & Config */
+        .sidebar {
+            width: 320px;
+            background-color: #f8fafc;
+            border-right: 1px solid #eaeaea;
+            padding: 20px;
+            overflow-y: auto;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Right Content: Chart & Table */
+        .chart-workspace {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: row; /* Change to row to put chart and table side-by-side */
+            gap: 20px;
+            overflow: hidden;
+        }
+
+        /* Center Column for Chart */
+        .chart-column {
+            flex: 3; /* Takes up more space */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            justify-content: center; /* Center vertically */
+        }
+        
+        /* Right Column for Table */
+        .table-column {
+            flex: 1; /* Takes up less space */
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #eaeaea;
+            padding-left: 20px;
+            overflow: hidden;
+        }
+
+        /* Chart Area */
+        .chart-container-wrapper {
+            /* flex: 1; Remove flex 1 to allow aspect ratio sizing */
+            position: relative;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e1e5eb;
+            padding: 10px;
+            margin-bottom: 15px;
+            /* Y-axis scrollbar on Left via RTL */
+            direction: rtl; 
+            overflow: auto;
+            /* Ensure it fits in view but respects aspect ratio */
+            width: 100%;
+            /* Aspect ratio handled via JS or padding-hack, but we want dynamic resize */
+            height: auto;
+            max-height: 80vh; /* Prevent it from being too tall */
+        }
+
+        /* Re-add styles that were accidentally removed */
+        .section-title {
+            font-size: 18px;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #4b6cb7;
+        }
+        
+        .file-upload-area {
+            border: 2px dashed #4b6cb7;
+            border-radius: 10px;
+            padding: 20px 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            background-color: white;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .file-upload-area:hover {
+            background-color: #eef5ff;
+            border-color: #2c5282;
+        }
+        
+        .file-upload-area i {
+            font-size: 32px;
+            color: #4b6cb7;
+            margin-bottom: 10px;
+        }
+        
+        .upload-btn {
+            display: inline-block;
+            background-color: #4b6cb7;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            margin-top: 10px;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .upload-btn:hover {
+            background-color: #3a5999;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Config Panel in Sidebar */
+        .config-panel {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e1e5eb;
+            margin-bottom: 20px;
+        }
+
+        .config-item {
+            margin-bottom: 15px;
+        }
+
+        .config-item label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .config-select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .y-axis-container {
+            border: 1px solid #e1e5eb;
+            border-radius: 4px;
+            max-height: 150px;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .y-axis-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+
+        .generate-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: #4b6cb7;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+
+        .generate-btn:hover {
+            background-color: #3a5999;
+        }
+        
+        .chart-container {
+            /* Reset direction to LTR for content */
+            direction: ltr;
+            position: relative;
+            /* Width and Height will be dynamic */
+            width: 100%;
+            height: auto; 
+            transform-origin: top left;
+        }
+
+        /* Controls Bar below chart */
+        .controls-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .control-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+        
+        .export-btn {
+            background-color: #2ecc71;
+            color: white;
+        }
+        
+        .export-btn:hover {
+            background-color: #27ae60;
+        }
+        
+        .reset-btn {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .reset-btn:hover {
+            background-color: #c0392b;
+        }
+
+        .zoom-btn {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .zoom-btn:hover {
+            background-color: #2980b9;
+        }
+
+        /* Data Table (Collapsible or Scrollable) */
+        .table-section {
+            height: 200px; /* Fixed height for table area */
+            overflow: auto;
+            border: 1px solid #e1e5eb;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .data-table th, .data-table td {
+            padding: 8px 12px;
+            text-align: center;
+            border: 1px solid #e1e5eb;
+            font-size: 13px;
+        }
+        
+        .data-table th {
+            background-color: #f1f5f9;
+            color: #2c3e50;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .data-table tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        
+        .data-table tr:hover {
+            background-color: #eef5ff;
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            display: none;
+            font-size: 13px;
+        }
+        
+        .success {
+            background-color: #d5f4e6;
+            color: #27ae60;
+            display: block;
+        }
+        
+        .error {
+            background-color: #fdeaea;
+            color: #e74c3c;
+            display: block;
+        }
+        
+        .instructions {
+            background-color: #f0f7ff;
+            border-left: 4px solid #4b6cb7;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 0 8px 8px 0;
+            font-size: 13px;
+        }
+        
+        .instructions h3 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+        
+        .instructions ul {
+            padding-left: 18px;
+        }
+        
+        .instructions li {
+            margin-bottom: 5px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 15px;
+            color: #7f8c8d;
+            font-size: 13px;
+            border-top: 1px solid #eaeaea;
+            background-color: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .creator-tag {
+            font-weight: 600;
+            color: #4b6cb7;
+            background: #eef5ff;
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        
+        @media (max-width: 900px) {
+            .main-content {
+                flex-direction: column;
+                overflow: auto;
+            }
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #eaeaea;
+                max-height: 400px;
+            }
+            .chart-workspace {
+                height: auto;
+                min-height: 600px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Excel数据交互式折线图表编辑器</h1>
+            <p class="subtitle">上传Excel文件，生成可拖拽编辑的折线图，修改后导出新数据</p>
+        </header>
+        
+        <div class="main-content">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <h2 class="section-title">1. 数据源</h2>
+                <div class="file-upload-area" id="dropArea">
+                    <p style="font-size: 14px; margin-bottom: 10px;">点击或拖放Excel文件</p>
+                    <label for="fileInput" class="upload-btn">选择文件</label>
+                    <input type="file" id="fileInput" accept=".xlsx, .xls, .csv">
+                </div>
+                
+                <div id="statusMessage" class="status"></div>
+
+                <div id="configSection" class="config-panel" style="display:none;">
+                    <h2 class="section-title" style="font-size: 16px; border:none; margin-bottom:10px;">2. 图表配置</h2>
+                    
+                    <div class="config-item">
+                        <label>选择工作表 (Sheet):</label>
+                        <select id="sheetSelect" class="config-select"></select>
+                    </div>
+                    
+                    <div class="config-item">
+                        <label>X轴数据 (横坐标):</label>
+                        <select id="xAxisSelect" class="config-select"></select>
+                    </div>
+
+                    <div class="config-item">
+                        <label>Y轴数据 (纵坐标 - 多选):</label>
+                        <div id="yAxisContainer" class="y-axis-container">
+                            <!-- Checkboxes will be inserted here -->
+                        </div>
+                    </div>
+                    
+                    <button id="updateChartBtn" class="generate-btn">生成/更新图表</button>
+                </div>
+
+                <div class="instructions">
+                    <h3>操作指南：</h3>
+                    <ul>
+                        <li><strong>缩放：</strong> 鼠标滚轮 (同时放大X轴和Y轴)</li>
+                        <li><strong>平移：</strong> 拖动底部滚动条</li>
+                        <li><strong>修改：</strong> 拖动圆点上下移动</li>
+                        <li><strong>删除：</strong> 双击圆点删除数据</li>
+                        <li><strong>显示：</strong> 单击折线样例可显示/隐藏该条折线</li>
+                        <li><strong>导出：</strong> 完成后点击下方导出按钮</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Main Workspace -->
+            <div class="chart-workspace">
+                <!-- Center: Chart and Controls -->
+                <div class="chart-column">
+                    <div class="chart-container-wrapper" id="chartWrapper">
+                        <div class="chart-container" id="chartContainer">
+                            <canvas id="lineChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="controls-bar">
+                        <button id="resetZoomBtn" class="control-btn zoom-btn">重置视图</button>
+                        <button id="resetBtn" class="control-btn reset-btn">重置数据</button>
+                        <button id="exportBtn" class="control-btn export-btn">导出Excel</button>
+                    </div>
+                </div>
+
+                <!-- Right: Table -->
+                <div class="table-column">
+                    <h2 class="section-title" style="font-size: 16px; margin-bottom: 10px;">数据预览</h2>
+                    <div id="tableContainer" class="table-section" style="flex: 1; height: auto;">
+                        <p style="padding: 20px; text-align: center; color: #666;">请先上传文件并生成图表</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <span>交互式Excel图表编辑器 &copy; 2026 | 使用Chart.js和SheetJS构建</span>
+            <span class="creator-tag">Created by MC</span>
+        </footer>
+    </div>
+
+    <script>
+        // Global Error Handler
+        window.onerror = function(message, source, lineno, colno, error) {
+            const statusDiv = document.getElementById('statusMessage');
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `系统错误: ${message} (Line: ${lineno})`;
+            }
+            console.error('Global Error:', message, error);
+            return false;
+        };
+
+        // 全局变量
+        let chart = null;
+        let workbook = null; // Store workbook
+        let rawSheetData = null; // Store raw data of current sheet
+        let originalData = null;
+        let currentData = null;
+        let columnHeaders = [];
+        let rowHeaders = [];
+        
+        // DOM元素
+        const fileInput = document.getElementById('fileInput');
+        const dropArea = document.getElementById('dropArea');
+        const exportBtn = document.getElementById('exportBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const tableContainer = document.getElementById('tableContainer');
+        const statusMessage = document.getElementById('statusMessage');
+        
+        // Zoom State
+        let currentZoomLevel = 1;
+        const MIN_ZOOM = 1;
+        const MAX_ZOOM = 10;
+        let dataPrecision = 2; // Default precision
+        const chartWrapper = document.getElementById('chartWrapper');
+        const chartContainer = document.getElementById('chartContainer');
+
+        // Config Elements
+        const configSection = document.getElementById('configSection');
+        const sheetSelect = document.getElementById('sheetSelect');
+        const xAxisSelect = document.getElementById('xAxisSelect');
+        const yAxisContainer = document.getElementById('yAxisContainer');
+        const updateChartBtn = document.getElementById('updateChartBtn');
+
+        // 初始化事件监听
+        document.addEventListener('DOMContentLoaded', function() {
+            // 文件上传事件
+            fileInput.addEventListener('change', handleFileSelect);
+            
+            // 拖放事件
+            dropArea.addEventListener('dragover', handleDragOver);
+            dropArea.addEventListener('drop', handleFileDrop);
+            
+            // 导出按钮事件
+            exportBtn.addEventListener('click', exportToExcel);
+            
+            // 重置按钮事件
+            resetBtn.addEventListener('click', resetToOriginal);
+            
+            // Config Events
+            sheetSelect.addEventListener('change', handleSheetChange);
+            updateChartBtn.addEventListener('click', processSelectedData);
+
+            // Reset Zoom
+            document.getElementById('resetZoomBtn').addEventListener('click', function() {
+                if (chart) {
+                    currentZoomLevel = 1;
+                    updateChartScale();
+                }
+            });
+
+            // Wheel Zoom Logic (Manual implementation with Center Zoom)
+            chartWrapper.addEventListener('wheel', function(e) {
+                if (!chart) return;
+                
+                // Always zoom on wheel
+                if (e.ctrlKey || e.metaKey || true) {
+                    e.preventDefault();
+                    
+                    const rect = chartWrapper.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left; // Mouse X position relative to wrapper
+                    
+                    // Current Scroll Position
+                    const scrollLeft = chartWrapper.scrollLeft;
+                    const wrapperWidth = chartWrapper.clientWidth;
+                    const contentWidth = chartContainer.clientWidth;
+                    
+                    // Calculate Mouse Position Ratio relative to Content Width
+                    // (scrollLeft + mouseX) is the absolute X position of mouse on the full content
+                    const mouseAbsoluteX = scrollLeft + mouseX;
+                    const mouseRatio = mouseAbsoluteX / contentWidth;
+                    
+                    const delta = Math.sign(e.deltaY) * -0.1; // Zoom step
+                    const newZoom = Math.min(Math.max(currentZoomLevel + delta, MIN_ZOOM), MAX_ZOOM);
+                    
+                    if (newZoom !== currentZoomLevel) {
+                        currentZoomLevel = newZoom;
+                        updateChartScale();
+                        
+                        // Adjust Scroll to keep mouse centered on same data point
+                        const newContentWidth = chartContainer.clientWidth;
+                        const newMouseAbsoluteX = newContentWidth * mouseRatio;
+                        const newScrollLeft = newMouseAbsoluteX - mouseX;
+                        
+                        chartWrapper.scrollLeft = newScrollLeft;
+                    }
+                }
+            });
+
+            // 初始化状态
+            updateStatus('请上传Excel文件开始使用', 'info');
+        });
+        
+        // 处理文件选择
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                processExcelFile(file);
+            }
+        }
+        
+        // 处理拖放
+        function handleDragOver(event) {
+            event.preventDefault();
+            dropArea.style.borderColor = '#2c5282';
+            dropArea.style.backgroundColor = '#eef5ff';
+        }
+        
+        function handleFileDrop(event) {
+            event.preventDefault();
+            dropArea.style.borderColor = '#4b6cb7';
+            dropArea.style.backgroundColor = '#f8fafc';
+            
+            const file = event.dataTransfer.files[0];
+            if (file) {
+                processExcelFile(file);
+            }
+        }
+        
+        // 处理Excel文件
+        function processExcelFile(file) {
+            if (!file.name.match(/\.(xlsx|xls|csv)$/)) {
+                updateStatus('错误：请上传Excel文件 (.xlsx, .xls, .csv)', 'error');
+                return;
+            }
+            
+            updateStatus('正在处理文件...', 'info');
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = e.target.result;
+                    workbook = XLSX.read(data, { type: 'binary' });
+                    
+                    if (workbook.SheetNames.length === 0) {
+                        updateStatus('错误：Excel文件中没有工作表', 'error');
+                        return;
+                    }
+
+                    // Populate Sheet Select
+                    sheetSelect.innerHTML = '';
+                    workbook.SheetNames.forEach(sheetName => {
+                        const option = document.createElement('option');
+                        option.value = sheetName;
+                        option.textContent = sheetName;
+                        sheetSelect.appendChild(option);
+                    });
+
+                    // Show config section
+                    configSection.style.display = 'block';
+
+                    // Load first sheet by default
+                    handleSheetChange();
+                    
+                    updateStatus(`成功加载文件: ${file.name}`, 'success');
+                } catch (error) {
+                    updateStatus('错误：无法读取Excel文件', 'error');
+                    console.error(error);
+                }
+            };
+            
+            reader.onerror = function() {
+                updateStatus('错误：读取文件失败', 'error');
+            };
+            
+            reader.readAsBinaryString(file);
+        }
+
+        // Handle Sheet Change
+        function handleSheetChange() {
+            const sheetName = sheetSelect.value;
+            const worksheet = workbook.Sheets[sheetName];
+            rawSheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            if (!rawSheetData || rawSheetData.length < 2) {
+                updateStatus('警告：选中的工作表数据不足', 'error');
+                return;
+            }
+
+            populateColumnSelectors();
+            processSelectedData(); // Automatically render with defaults
+        }
+
+        // Populate X/Y Selectors
+        function populateColumnSelectors() {
+            const headers = rawSheetData[0];
+            
+            // Populate X Axis Select
+            xAxisSelect.innerHTML = '';
+            headers.forEach((header, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = header || `列 ${index + 1}`;
+                xAxisSelect.appendChild(option);
+            });
+            // Default select first column
+            xAxisSelect.selectedIndex = 0;
+
+            // Populate Y Axis Checkboxes
+            yAxisContainer.innerHTML = '';
+            headers.forEach((header, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.style.display = 'flex';
+                wrapper.style.alignItems = 'center';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = index;
+                checkbox.id = `y_col_${index}`;
+                // Default select all columns except the first one (which is X)
+                checkbox.checked = index > 0;
+                
+                const label = document.createElement('label');
+                label.htmlFor = `y_col_${index}`;
+                label.textContent = header || `列 ${index + 1}`;
+                label.style.marginLeft = '5px';
+                label.style.cursor = 'pointer';
+
+                wrapper.appendChild(checkbox);
+                wrapper.appendChild(label);
+                yAxisContainer.appendChild(wrapper);
+            });
+        }
+
+        function updateChartScale() {
+             if (!chartContainer || !chart) return;
+             
+             // Get container visible width (base width)
+             const wrapperWidth = chartWrapper.clientWidth;
+             // Calculate target width and height based on Zoom
+             // Aspect Ratio 2:1 -> Height = Width / 2
+             
+             const targetWidth = wrapperWidth * currentZoomLevel;
+             const targetHeight = targetWidth / 2;
+             
+             // Apply styles
+             chartContainer.style.width = `${targetWidth}px`;
+             chartContainer.style.height = `${targetHeight}px`;
+             
+             // Reset scales min/max to allow chart to fill the new size automatically
+             // (We removed manual min/max manipulation from previous step to let physical resize handle it)
+             if (chart.options.scales.y.min !== undefined) {
+                 delete chart.options.scales.y.min;
+                 delete chart.options.scales.y.max;
+             }
+             
+             chart.resize();
+         }
+
+        // Determine precision from data
+        function detectPrecision(data) {
+            let maxPrecision = 0;
+            // Sample first 100 rows to avoid performance hit on huge files
+            const sampleSize = Math.min(data.length, 100);
+            
+            for (let i = 1; i < sampleSize; i++) {
+                const row = data[i];
+                if (row) {
+                    for (let j = 0; j < row.length; j++) {
+                        const val = row[j];
+                        if (typeof val === 'number' && !Number.isInteger(val)) {
+                            const str = val.toString();
+                            if (str.indexOf('.') !== -1) {
+                                const decimalPart = str.split('.')[1];
+                                if (decimalPart) {
+                                    maxPrecision = Math.max(maxPrecision, decimalPart.length);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Cap at 4 if not found, or use found max (up to say 6)
+            return Math.max(2, Math.min(maxPrecision, 6));
+        }
+
+        // Process Data based on selection
+        function processSelectedData() {
+            try {
+                if (!rawSheetData) return;
+
+                // Detect precision from raw data
+                dataPrecision = detectPrecision(rawSheetData);
+                console.log("Detected Precision:", dataPrecision);
+
+                const xColIndex = parseInt(xAxisSelect.value);
+                const yCheckboxes = yAxisContainer.querySelectorAll('input[type="checkbox"]:checked');
+                
+                if (yCheckboxes.length === 0) {
+                    updateStatus('请至少选择一列作为Y轴数据', 'error');
+                    return;
+                }
+
+                const yColIndices = Array.from(yCheckboxes).map(cb => parseInt(cb.value));
+                
+                // Build headers
+                const headers = rawSheetData[0];
+                const newColumnHeaders = [headers[xColIndex]]; // First is X
+                yColIndices.forEach(idx => newColumnHeaders.push(headers[idx]));
+
+                // Build data
+                const newRowHeaders = [];
+                const newDataColumns = yColIndices.map(() => []);
+
+                for (let i = 1; i < rawSheetData.length; i++) {
+                    const row = rawSheetData[i];
+                    // Ensure row has data
+                    if (row && row.length > 0) {
+                        // X Value
+                        const xVal = row[xColIndex] !== undefined ? row[xColIndex] : `Row ${i}`;
+                        newRowHeaders.push(xVal);
+
+                        // Y Values
+                        yColIndices.forEach((yIdx, arrIdx) => {
+                            let val = row[yIdx];
+                            // Parse float, treat empty/non-numeric as null or 0? 
+                            // Chart.js handles nulls as gaps, which is good.
+                            // But let's try to parse.
+                            if (val === undefined || val === null || val === '') {
+                                val = null;
+                            } else {
+                                const num = parseFloat(val);
+                                val = isNaN(num) ? null : num;
+                            }
+                            newDataColumns[arrIdx].push(val);
+                        });
+                    }
+                }
+
+                // Store processed data
+                currentData = {
+                    rowHeaders: newRowHeaders,
+                    dataColumns: newDataColumns,
+                    columnHeaders: newColumnHeaders,
+                    sourceIndices: { x: xColIndex, y: yColIndices } // Store indices for export reference if needed
+                };
+                
+                // Backup for reset
+                originalData = JSON.parse(JSON.stringify(currentData));
+
+                // Reset Zoom
+                currentZoomLevel = 1;
+
+                renderChart();
+                renderDataTable();
+                
+                // Initialize chart size
+                setTimeout(updateChartScale, 100); // Small delay to ensure rendering
+                
+                updateStatus('图表已更新', 'success');
+            } catch (err) {
+                console.error("Error in processSelectedData:", err);
+                updateStatus('生成图表失败: ' + err.message, 'error');
+            }
+        }
+
+        // 渲染图表
+        function renderChart() {
+            try {
+                const ctx = document.getElementById('lineChart').getContext('2d');
+                
+                // 如果已存在图表，销毁它
+                if (chart) {
+                    chart.destroy();
+                }
+                
+                // 准备数据集
+                const datasets = [];
+                const colors = [
+                    '#4b6cb7', '#2ecc71', '#e74c3c', '#f39c12', 
+                    '#9b59b6', '#1abc9c', '#d35400', '#34495e'
+                ];
+                
+                for (let i = 0; i < currentData.dataColumns.length; i++) {
+                    datasets.push({
+                        label: currentData.columnHeaders[i+1] || `系列${i+1}`,
+                        data: currentData.dataColumns[i],
+                        borderColor: colors[i % colors.length],
+                        backgroundColor: colors[i % colors.length] + '20',
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: colors[i % colors.length],
+                        fill: false,
+                        tension: 0.1
+                    });
+                }
+                
+                // Check if plugins are loaded
+                if (typeof ChartDragData === 'undefined') {
+                    console.warn('ChartDragData plugin not loaded');
+                }
+                
+                // 创建图表
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: currentData.rowHeaders,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: { font: { size: 14 }, padding: 20 }
+                            },
+                            tooltip: {
+                                mode: 'nearest',
+                                intersect: true,
+                                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                                titleFont: { size: 14 },
+                                bodyFont: { size: 14 },
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y.toFixed(dataPrecision); // Use detected precision
+                                        }
+                                        return label;
+                                    }
+                                }
+                            },
+                            // Remove zoom plugin from chart options as we handle it via CSS width
+                            dragData: {
+                                round: dataPrecision, // Use detected precision
+                                showTooltip: true,
+                                onDragStart: function(e, element) {
+                                    // No need to disable zoom anymore as we removed the plugin
+                                },
+                                onDrag: function(e, datasetIndex, index, value) {
+                                    updateDataFromChart(datasetIndex, index, value);
+                                },
+                                onDragEnd: function(e, datasetIndex, index, value) {
+                                    updateDataFromChart(datasetIndex, index, value);
+                                    renderDataTable();
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: currentData.columnHeaders[0] || 'X轴',
+                                    font: { size: 14, weight: 'bold' }
+                                },
+                                grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: '数值',
+                                    font: { size: 14, weight: 'bold' }
+                                },
+                                grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                                beginAtZero: false // Allow negative or large offsets
+                            }
+                        },
+                        interaction: {
+                            intersect: false,
+                            mode: 'nearest'
+                        }
+                    }
+                });
+                
+                // 添加双击删除点的功能
+                const chartElement = document.getElementById('lineChart');
+                // Remove previous click listeners to avoid duplicates
+                chartElement.onclick = null; 
+                
+                chartElement.onclick = function(evt) {
+                    const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+                    if (points.length && evt.detail === 2) { // 双击
+                        const firstPoint = points[0];
+                        const datasetIndex = firstPoint.datasetIndex;
+                        const index = firstPoint.index;
+                        
+                        if (confirm(`确定要删除 ${currentData.columnHeaders[datasetIndex+1]} 系列中的 "${currentData.rowHeaders[index]}" 数据点吗？`)) {
+                            currentData.dataColumns[datasetIndex][index] = null;
+                            chart.data.datasets[datasetIndex].data[index] = null;
+                            chart.update();
+                            renderDataTable();
+                            updateStatus(`已删除数据点: ${currentData.columnHeaders[datasetIndex+1]} - ${currentData.rowHeaders[index]}`, 'info');
+                        }
+                    }
+                };
+            } catch (err) {
+                console.error("Error in renderChart:", err);
+                updateStatus('渲染图表失败: ' + err.message + '. 请检查控制台以获取更多信息。', 'error');
+            }
+        }
+        
+        // 从图表更新数据
+        function updateDataFromChart(datasetIndex, index, value) {
+            if (currentData && 
+                currentData.dataColumns && 
+                currentData.dataColumns[datasetIndex] && 
+                currentData.dataColumns[datasetIndex][index] !== undefined) {
+                
+                // Use higher precision or raw value if possible
+                // Here we keep the value as is (number), but update table display
+                currentData.dataColumns[datasetIndex][index] = value;
+                
+                // 更新表格中的对应值
+                const table = document.getElementById('dataTable');
+                if (table && table.rows[index+1] && table.rows[index+1].cells[datasetIndex+1]) {
+                    // Check if value is integer or float
+                    const displayValue = Number.isInteger(value) ? value : parseFloat(value.toFixed(dataPrecision));
+                    table.rows[index+1].cells[datasetIndex+1].textContent = displayValue;
+                }
+            }
+        }
+        
+        // 渲染数据表格
+        function renderDataTable() {
+            if (!currentData) return;
+            
+            let tableHTML = '<table class="data-table" id="dataTable">';
+            
+            // 表头
+            tableHTML += '<thead><tr>';
+            for (let i = 0; i < currentData.columnHeaders.length; i++) {
+                tableHTML += `<th>${currentData.columnHeaders[i] || `列${i+1}`}</th>`;
+            }
+            tableHTML += '</tr></thead>';
+            
+            // 表体
+            tableHTML += '<tbody>';
+            for (let i = 0; i < currentData.rowHeaders.length; i++) {
+                tableHTML += '<tr>';
+                tableHTML += `<td>${currentData.rowHeaders[i]}</td>`;
+                
+                for (let j = 0; j < currentData.dataColumns.length; j++) {
+                    const value = currentData.dataColumns[j][i];
+                    // Display raw value or fallback to '--'
+                    tableHTML += `<td>${value !== null ? value : '--'}</td>`;
+                }
+                
+                tableHTML += '</tr>';
+            }
+            tableHTML += '</tbody></table>';
+            
+            tableContainer.innerHTML = tableHTML;
+        }
+        
+        // 导出到Excel
+        function exportToExcel() {
+            if (!currentData) {
+                updateStatus('错误：没有可导出的数据', 'error');
+                return;
+            }
+            
+            try {
+                // 准备数据
+                const exportData = [];
+                
+                // 添加标题行
+                exportData.push(currentData.columnHeaders);
+                
+                // 添加数据行
+                for (let i = 0; i < currentData.rowHeaders.length; i++) {
+                    const row = [currentData.rowHeaders[i]];
+                    
+                    for (let j = 0; j < currentData.dataColumns.length; j++) {
+                        row.push(currentData.dataColumns[j][i]);
+                    }
+                    
+                    exportData.push(row);
+                }
+                
+                // 创建工作表
+                const worksheet = XLSX.utils.aoa_to_sheet(exportData);
+                
+                // 创建工作簿
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+                
+                // 生成Excel文件并下载
+                const fileName = `修改后的数据_${new Date().toISOString().slice(0,10)}.xlsx`;
+                XLSX.writeFile(workbook, fileName);
+                
+                updateStatus(`数据已导出为: ${fileName}`, 'success');
+            } catch (error) {
+                updateStatus('错误：导出数据失败', 'error');
+                console.error(error);
+            }
+        }
+        
+        // 重置为原始数据
+        function resetToOriginal() {
+            if (!originalData) {
+                updateStatus('没有原始数据可重置', 'error');
+                return;
+            }
+            
+            if (confirm('确定要重置为原始数据吗？所有修改将丢失。')) {
+                currentData = {
+                    rowHeaders: [...originalData.rowHeaders],
+                    dataColumns: originalData.dataColumns.map(col => [...col]),
+                    columnHeaders: [...originalData.columnHeaders]
+                };
+                
+                renderChart();
+                renderDataTable();
+                updateStatus('已重置为原始数据', 'success');
+            }
+        }
+        
+        // 更新状态消息
+        function updateStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = 'status';
+            
+            if (type === 'success') {
+                statusMessage.classList.add('success');
+            } else if (type === 'error') {
+                statusMessage.classList.add('error');
+            } else {
+                statusMessage.style.display = 'block';
+                statusMessage.style.backgroundColor = '#e8f4fd';
+                statusMessage.style.color = '#31708f';
+            }
+            
+            // 3秒后自动隐藏成功/信息消息
+            if (type !== 'error') {
+                setTimeout(() => {
+                    statusMessage.style.display = 'none';
+                }, 3000);
+            }
+        }
+        
+        // 提供示例数据下载
+        function createExampleData() {
+            const exampleData = [
+                ['月份', '产品A销售额', '产品B销售额', '产品C销售额'],
+                ['1月', 120, 150, 80],
+                ['2月', 135, 160, 95],
+                ['3月', 148, 175, 110],
+                ['4月', 160, 190, 125],
+                ['5月', 175, 205, 140],
+                ['6月', 190, 220, 155],
+                ['7月', 210, 240, 170],
+                ['8月', 230, 260, 185],
+                ['9月', 250, 280, 200],
+                ['10月', 270, 300, 215],
+                ['11月', 290, 320, 230],
+                ['12月', 310, 340, 245]
+            ];
+            
+            // 创建工作表
+            const worksheet = XLSX.utils.aoa_to_sheet(exampleData);
+            
+            // 创建工作簿
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "销售数据");
+            
+            // 生成Excel文件并下载
+            XLSX.writeFile(workbook, "示例销售数据.xlsx");
+        }
+        
+        // 在页面加载后添加示例数据链接
+        document.addEventListener('DOMContentLoaded', function() {
+            const instructions = document.querySelector('.instructions');
+            const exampleLink = document.createElement('p');
+            exampleLink.innerHTML = '<a href="#" id="downloadExample" style="color: #4b6cb7; text-decoration: underline;">下载示例Excel文件</a>';
+            instructions.appendChild(exampleLink);
+            
+            document.getElementById('downloadExample').addEventListener('click', function(e) {
+                e.preventDefault();
+                createExampleData();
+            });
+        });
+    </script>
+</body>
+</html>
